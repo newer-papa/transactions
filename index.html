@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI 随身记账 v4.3 (全功能旗舰版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* --- 风格定义 --- */
+        :root { 
+            --primary: #4CAF50; 
+            --primary-dark: #388E3C;
+            --accent: #673AB7; 
+            --bg: #f4f7f6; 
+            --white: #ffffff; 
+            --text: #333; 
+            --danger: #e74c3c; 
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; }
+        
+        .view { display: none; flex: 1; flex-direction: column; height: 100%; overflow-y: auto; padding: 15px; }
+        .view.active { display: flex; }
+
+        h2 { text-align: center; margin: 10px 0 20px; font-size: 1.5rem; color: var(--primary); }
+        .card { background: var(--white); padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; transition: 0.3s; }
+        input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 5px rgba(76, 175, 80, 0.2); }
+        
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); margin-top: 10px; }
+        .btn-ai { background: var(--accent); color: white; width: 80px; margin-left: 10px; margin-bottom: 15px;}
+        
+        /* 顶部总览卡片 */
+        .balance-card { background: var(--primary); color: white; text-align: center; padding: 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3); }
+        .balance-card h1 { margin: 10px 0 0; font-size: 2.5rem; }
+
+        /* 图表区 */
+        .chart-row { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
+        .chart-box { flex: 1; min-width: 300px; background: white; padding: 15px; border-radius: 12px; height: 300px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        /* 筛选栏 (新增样式) */
+        .filter-row { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; }
+        .filter-row select, .filter-row input { margin-bottom: 0; }
+        .hidden { display: none !important; }
+
+        /* 列表样式 */
+        .list { list-style: none; padding: 0; margin: 0; padding-bottom: 20px;}
+        .list-item { background: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .item-left b { display: block; font-size: 1rem; margin-bottom: 4px; }
+        .item-left span { font-size: 0.8rem; color: #888; }
+        .amount { font-weight: bold; color: var(--danger); font-size: 1.1rem; }
+        .del-btn { color: #ccc; padding: 5px 10px; font-size: 1.2rem; cursor: pointer; margin-left: 10px; }
+        
+        .ai-section { background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #d1c4e9; }
+
+        #global-loading { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.95); z-index:999; display:flex; justify-content:center; align-items:center; flex-direction:column;}
+    </style>
+</head>
+<body>
+
+    <div id="global-loading">
+        <div style="font-size:2rem; margin-bottom:10px;">⏳</div>
+        <div id="loading-text">正在启动...</div>
+        <div id="error-text" style="color:red; font-size:0.8rem; margin-top:10px;"></div>
+    </div>
+
+    <div id="view-auth" class="view">
+        <div style="max-width: 400px; margin: auto; width: 100%;">
+            <div style="font-size: 3rem; text-align: center; margin-bottom: 10px;">💰</div>
+            <h2>AI 随身记账</h2>
+            <div class="card">
+                <input type="email" id="auth-email" placeholder="邮箱" />
+                <input type="password" id="auth-password" placeholder="密码" />
+                <button class="btn-primary" onclick="handleLogin()">登录</button>
+                <button class="btn-outline" onclick="handleSignup()">注册新账号</button>
+                <p style="text-align:center; color:#999; font-size:0.8rem; margin-top:15px;">v4.3 全功能版</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="view-app" class="view">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; padding:0 5px;">
+            <span id="current-user" style="font-size:0.9rem; color:#666;">用户</span>
+            <button onclick="handleLogout()" style="width:auto; padding:6px 15px; font-size:0.8rem; background:#ddd; color:#333;">退出</button>
+        </div>
+
+        <div class="card" style="padding: 15px;">
+            <div class="filter-row">
+                <select id="filter-type" onchange="toggleFilter()" style="flex:1;">
+                    <option value="month">📅 按月看</option>
+                    <option value="year">📆 按年看</option>
+                    <option value="all">📂 看全部</option>
+                </select>
+                <input type="month" id="filter-month" onchange="refreshUI()" style="flex:2;">
+                <input type="number" id="filter-year" class="hidden" placeholder="输入年份 (如2024)" onchange="refreshUI()" style="flex:2;">
+            </div>
+            <div style="text-align:center; margin-top:10px;">
+                <span style="font-size:0.8rem; color:#888;">当前范围内支出</span>
+                <div id="total-amount" style="font-size: 2rem; font-weight: bold; color: var(--primary);">¥0.00</div>
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-box"><canvas id="categoryChart"></canvas></div>
+            <div class="chart-box"><canvas id="trendChart"></canvas></div>
+        </div>
+
+        <div class="ai-section">
+            <div style="font-weight:bold; color:var(--accent); margin-bottom:8px;">✨ AI 一键识别</div>
+            <div style="display:flex;">
+                <input type="text" id="ai-input" placeholder="例如：昨天吃火锅花了200..." style="margin-bottom:0; border-color:#d1c4e9;">
+                <button class="btn-ai" onclick="callAI()">识别</button>
+            </div>
+            <div id="ai-status" style="font-size:0.8rem; color:var(--accent); margin-top:5px; height:1.2em;"></div>
+        </div>
+
+        <div class="card">
+            <div style="font-weight:bold; margin-bottom:15px; border-left:4px solid var(--primary); padding-left:10px;">📝 记一笔</div>
+            <input type="text" id="desc" placeholder="备注 (例如：午餐)" />
+            <input type="number" id="amount" placeholder="金额" />
+            <select id="category">
+                <option value="餐饮">🍔 餐饮</option>
+                <option value="生活缴费">⚡ 生活缴费</option>
+                <option value="交通">🚕 交通</option>
+                <option value="购物">🛍️ 购物</option>
+                <option value="娱乐">🎮 娱乐</option>
+                <option value="居住">🏠 居住</option>
+                <option value="其他">📦 其他</option>
+            </select>
+            <input type="date" id="date">
+            <button class="btn-primary" id="btn-save" onclick="addManualTransaction()">✅ 确认保存</button>
+        </div>
+
+        <h3 style="margin:10px 5px; font-size:1rem; border-left:4px solid var(--primary); padding-left:10px;">账单明细</h3>
+        <ul id="list" class="list"></ul>
+    </div>
+
+    <script>
+        // =========================================
+        // ⚠️ 必填：请填入你的 Key
+        // =========================================
+        const SUPABASE_URL = 'https://oqfpqlbcvtwdhmxpoyte.supabase.co'; 
+        const SUPABASE_KEY = 'sb_publishable_qLAR82iAQOITv_7vQgHHcg_Sa9ObrOO';
+        const GEMINI_API_KEY = 'AIzaSyCWfU3USqnm7e5HbVsYWtcRohejcWcLKpY'; 
+        // =========================================
+
+        if (SUPABASE_URL.includes('你的') || SUPABASE_KEY.includes('你的')) {
+            document.getElementById('loading-text').innerText = "⚠️ 配置错误";
+            document.getElementById('error-text').innerText = "请在代码第 155 行填入 URL 和 Key";
+            throw new Error("配置未填写");
+        }
+
+        const { createClient } = supabase;
+        const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        let currentUser = null;
+        let allTransactions = []; 
+        let catChart = null;
+        let trendChart = null;
+
+        // --- 初始化 ---
+        window.onload = async () => {
+            document.getElementById('date').valueAsDate = new Date();
+            // 默认选中当前月
+            document.getElementById('filter-month').value = new Date().toISOString().slice(0, 7);
+            // 默认年份
+            document.getElementById('filter-year').value = new Date().getFullYear();
+
+            try {
+                const { data: { session } } = await _supabase.auth.getSession();
+                if (session) {
+                    enterApp(session.user);
+                } else {
+                    switchView('view-auth');
+                    document.getElementById('global-loading').style.display = 'none';
+                }
+            } catch (e) {
+                document.getElementById('loading-text').innerText = "启动失败";
+                document.getElementById('error-text').innerText = e.message;
+            }
+        };
+
+        function switchView(id) {
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // --- 认证 ---
+        async function handleLogin() {
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+            if (!email || !password) return alert("请输入信息");
+            
+            document.getElementById('global-loading').style.display = 'flex';
+            const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+            document.getElementById('global-loading').style.display = 'none';
+
+            if (error) alert(error.message);
+            else enterApp(data.user);
+        }
+
+        async function handleSignup() {
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+            if (!email || !password) return alert("请输入信息");
+
+            const { data, error } = await _supabase.auth.signUp({ email, password });
+            if (error) alert(error.message);
+            else {
+                alert("注册成功！");
+                if (data.session) enterApp(data.user);
+            }
+        }
+
+        async function handleLogout() {
+            await _supabase.auth.signOut();
+            location.reload();
+        }
+
+        function enterApp(user) {
+            currentUser = user;
+            document.getElementById('current-user').innerText = user.email;
+            switchView('view-app');
+            document.getElementById('global-loading').style.display = 'none';
+            fetchData();
+        }
+
+        // --- 数据 ---
+        async function fetchData() {
+            const { data, error } = await _supabase.from('transactions').select('*').order('date', { ascending: false });
+            if (error) return console.error(error);
+            allTransactions = data || [];
+            refreshUI(); 
+        }
+
+        // --- 筛选逻辑 (找回的功能!) ---
+        function toggleFilter() {
+            const type = document.getElementById('filter-type').value;
+            document.getElementById('filter-month').classList.add('hidden');
+            document.getElementById('filter-year').classList.add('hidden');
+
+            if(type === 'month') document.getElementById('filter-month').classList.remove('hidden');
+            if(type === 'year') document.getElementById('filter-year').classList.remove('hidden');
+            
+            refreshUI();
+        }
+
+        function refreshUI() {
+            const type = document.getElementById('filter-type').value;
+            let result = allTransactions;
+
+            if (type === 'month') {
+                const val = document.getElementById('filter-month').value;
+                if(val) result = allTransactions.filter(t => t.date.startsWith(val));
+            } else if (type === 'year') {
+                const val = document.getElementById('filter-year').value;
+                if(val) result = allTransactions.filter(t => t.date.startsWith(val));
+            }
+
+            renderList(result);
+            renderCharts(result);
+
+            const total = result.reduce((sum, item) => sum + item.amount, 0);
+            document.getElementById('total-amount').innerText = `¥${total.toFixed(2)}`;
+        }
+
+        // --- 保存 (手动) ---
+        async function addManualTransaction() {
+            const desc = document.getElementById('desc').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            const category = document.getElementById('category').value;
+            const date = document.getElementById('date').value;
+            const btn = document.getElementById('btn-save');
+
+            if (!desc || !amount || !date) return alert('请填写完整');
+
+            btn.disabled = true; btn.innerText = "保存中...";
+
+            try {
+                // 此时你已经加上了 user_id 列，这里会自动生效
+                const { error } = await _supabase.from('transactions').insert([{
+                    desc, amount, category, date, user_id: currentUser.id
+                }]);
+                if (error) throw error;
+
+                document.getElementById('desc').value = '';
+                document.getElementById('amount').value = '';
+                btn.innerText = "✅ 保存成功";
+                setTimeout(() => btn.innerText = "✅ 确认保存", 1000);
+                fetchData();
+
+            } catch (e) {
+                alert("保存失败: " + e.message);
+                btn.innerText = "重试";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // --- 列表与图表 ---
+        function renderList(data) {
+            const list = document.getElementById('list');
+            list.innerHTML = '';
+            data.forEach(item => {
+                const li = document.createElement('li');
+                li.classList.add('list-item');
+                li.innerHTML = `
+                    <div class="item-left"><b>${item.category} · ${item.desc}</b><span>${item.date}</span></div>
+                    <div style="display:flex; align-items:center;">
+                        <span class="amount">-¥${item.amount}</span>
+                        <span class="del-btn" onclick="deleteItem('${item.id}')">×</span>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function renderCharts(data) {
+            const catData = {}; 
+            data.forEach(t => catData[t.category] = (catData[t.category]||0) + t.amount);
+            
+            const dateData = {};
+            [...data].sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(t => {
+                const key = t.date.slice(5); 
+                dateData[key] = (dateData[key]||0) + t.amount;
+            });
+
+            if (catChart) catChart.destroy();
+            if (trendChart) trendChart.destroy();
+
+            catChart = new Chart(document.getElementById('categoryChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(catData),
+                    datasets: [{ data: Object.values(catData), backgroundColor: ['#4CAF50','#2196F3','#FFC107','#FF5722','#9C27B0','#E91E63'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+            });
+
+            trendChart = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: Object.keys(dateData),
+                    datasets: [{ label: '趋势', data: Object.values(dateData), borderColor: '#4CAF50', tension: 0.3 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { display: false }, x: { grid: { display: false } } } }
+            });
+        }
+
+        async function deleteItem(id) {
+            if (!confirm("删除？")) return;
+            await _supabase.from('transactions').delete().eq('id', id);
+            fetchData(); 
+        }
+
+        // --- AI (辅助) ---
+        async function callAI() {
+            const text = document.getElementById('ai-input').value;
+            const status = document.getElementById('ai-status');
+            if (!text) return alert("请输入内容");
+            
+            status.innerText = "🤖 分析中...";
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const prompt = `提取JSON: amount(数字), category(餐饮/交通/购物/娱乐/居住/其他), desc, date(${today})。输入:"${text}"`;
+                
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+
+                const resText = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
+                const result = JSON.parse(resText);
+
+                document.getElementById('desc').value = result.desc;
+                document.getElementById('amount').value = result.amount;
+                document.getElementById('date').value = result.date;
+                document.getElementById('category').value = result.category;
+                status.innerText = "✅ 识别成功！请确认后点击保存";
+
+            } catch (e) {
+                status.innerText = "❌ " + e.message;
+            }
+        }
+    </script>
+</body>
+</html>
