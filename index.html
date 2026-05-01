@@ -6,6 +6,7 @@
     <title>AI 随身记账 v4.3 (全功能旗舰版)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
     <style>
         /* --- 风格定义 --- */
         :root { 
@@ -144,16 +145,17 @@
         // =========================================
         // ⚠️ 必填：请填入你的 Key
         // =========================================
-        const SUPABASE_URL = 'https://oqfpqlbcvtwdhmxpoyte.supabase.co'; 
-        const SUPABASE_KEY = 'sb_publishable_qLAR82iAQOITv_7vQgHHcg_Sa9ObrOO';
-        const DEEPSEEK_API_KEY = 'sk-ba0c65c0b8194035ac23721d09fd19fc';
         // =========================================
-
-        if (SUPABASE_URL.includes('你的') || SUPABASE_KEY.includes('你的')) {
+        // 密钥统一从 config.js 加载 (已加入 .gitignore)
+        // =========================================
+        if (!window._CONFIG || !window._CONFIG.SUPABASE_URL || window._CONFIG.SUPABASE_URL.includes('你的')) {
             document.getElementById('loading-text').innerText = "⚠️ 配置错误";
-            document.getElementById('error-text').innerText = "请在代码第 155 行填入 URL 和 Key";
-            throw new Error("配置未填写");
+            document.getElementById('error-text').innerText = "请创建 config.js 文件并填入你的密钥 (参考 config.example.js)";
+            throw new Error("config.js 未配置");
         }
+        const SUPABASE_URL = window._CONFIG.SUPABASE_URL;
+        const SUPABASE_KEY = window._CONFIG.SUPABASE_KEY;
+        const DEEPSEEK_API_KEY = window._CONFIG.DEEPSEEK_API_KEY;
 
         const { createClient } = supabase;
         const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -227,7 +229,6 @@
             switchView('view-app');
             document.getElementById('global-loading').style.display = 'none';
             fetchData();
-            checkAppUpdate();
         }
 
         // --- 数据 ---
@@ -397,52 +398,6 @@
             } catch (e) {
                 status.innerText = "❌ " + e.message;
             }
-        }
-        // === 在线更新 (DCloud wgt热更新) ===
-        async function checkAppUpdate() {
-            if (typeof plus === 'undefined') return;
-            try {
-                const url = 'https://newer-papa.github.io/transactions/update.json?v=' + Date.now();
-                const res = await fetch(url);
-                const remote = await res.json();
-                const local = plus.runtime.version;
-                if (compareVersion(remote.version, local) > 0) {
-                    if (confirm(`发现新版本 ${remote.version}，是否立即更新？\n${remote.desc || ''}`)) {
-                        downloadUpdate(remote.url);
-                    }
-                }
-            } catch (e) {
-                console.log('更新检查失败:', e.message);
-            }
-        }
-
-        function compareVersion(v1, v2) {
-            const a = v1.split('.').map(Number);
-            const b = v2.split('.').map(Number);
-            for (let i = 0; i < Math.max(a.length, b.length); i++) {
-                const diff = (a[i] || 0) - (b[i] || 0);
-                if (diff !== 0) return diff;
-            }
-            return 0;
-        }
-
-        function downloadUpdate(url) {
-            plus.nativeUI.showWaiting('正在下载更新...');
-            plus.downloader.createDownload(url, {}, (d, status) => {
-                if (status === 200) {
-                    plus.nativeUI.closeWaiting();
-                    plus.runtime.install(d.filename, { force: true }, () => {
-                        plus.nativeUI.alert('更新完成，即将重启应用', () => {
-                            plus.runtime.restart();
-                        });
-                    }, e => {
-                        plus.nativeUI.alert('安装失败: ' + e.message);
-                    });
-                } else {
-                    plus.nativeUI.closeWaiting();
-                    plus.nativeUI.alert('下载失败，请检查网络后重试');
-                }
-            }).start();
         }
     </script>
 </body>
