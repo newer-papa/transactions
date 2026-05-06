@@ -72,7 +72,10 @@
 
     <div id="view-auth" class="view">
         <div style="max-width: 400px; margin: auto; width: 100%;">
-            <div style="font-size: 3rem; text-align: center; margin-bottom: 10px;">💰</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div style="font-size: 3rem;">💰</div>
+                <button onclick="showSettings()" style="width:auto; padding:8px 12px; font-size:1.2rem; background:#ddd; border:none; border-radius:8px; cursor:pointer;">⚙️</button>
+            </div>
             <h2>AI 随身记账</h2>
             <div class="card">
                 <input type="email" id="auth-email" placeholder="邮箱" />
@@ -84,10 +87,38 @@
         </div>
     </div>
 
+    <!-- 设置页面 -->
+    <div id="view-settings" class="view">
+        <div style="max-width: 400px; margin: auto; width: 100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="margin:0;">⚙️ 设置</h2>
+                <button onclick="hideSettings()" style="width:auto; padding:8px 15px; background:#ddd; border:none; border-radius:8px; cursor:pointer;">返回</button>
+            </div>
+            <div class="card">
+                <label style="display:block; margin-bottom:5px; font-size:0.9rem; color:#666;">数据库 URL</label>
+                <input type="text" id="setting-supabase-url" placeholder="https://xxx.supabase.co" />
+
+                <label style="display:block; margin-bottom:5px; font-size:0.9rem; color:#666;">数据库 Key</label>
+                <input type="password" id="setting-supabase-key" placeholder="输入你的 数据库 key" />
+
+                <label style="display:block; margin-bottom:5px; font-size:0.9rem; color:#666;">API Key</label>
+                <input type="password" id="setting-deepseek-key" placeholder="模型 API key" />
+
+                <label style="display:block; margin-bottom:5px; font-size:0.9rem; color:#666;">URL</label>
+                <input type="text" id="setting-model-url" placeholder="https://api.deepseek.com/v1/chat/completions" />
+
+                <button class="btn-primary" onclick="saveSettings()" style="margin-top:10px;">💾 保存设置</button>
+            </div>
+        </div>
+    </div>
+
     <div id="view-app" class="view">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; padding:0 5px;">
             <span id="current-user" style="font-size:0.9rem; color:#666;">用户</span>
-            <button onclick="handleLogout()" style="width:auto; padding:6px 15px; font-size:0.8rem; background:#ddd; color:#333;">退出</button>
+            <div>
+                <button onclick="showSettings()" style="width:auto; padding:6px 10px; font-size:0.8rem; background:#ddd; color:#333; margin-right:5px;">⚙️</button>
+                <button onclick="handleLogout()" style="width:auto; padding:6px 15px; font-size:0.8rem; background:#ddd; color:#333;">退出</button>
+            </div>
         </div>
 
         <div class="card" style="padding: 15px;">
@@ -143,26 +174,120 @@
 
     <script>
         // =========================================
-        // ⚠️ 必填：请填入你的 Key
+        // 密钥从 config.js 或本地存储读取
+        // config.js 用于开发，本地存储用于用户设置
         // =========================================
-        // =========================================
-        // 密钥统一从 config.js 加载 (已加入 .gitignore)
-        // =========================================
-        if (!window._CONFIG || !window._CONFIG.SUPABASE_URL || window._CONFIG.SUPABASE_URL.includes('你的')) {
-            document.getElementById('loading-text').innerText = "⚠️ 配置错误";
-            document.getElementById('error-text').innerText = "请创建 config.js 文件并填入你的密钥 (参考 config.example.js)";
-            throw new Error("config.js 未配置");
+        let SUPABASE_URL = (window._CONFIG && window._CONFIG.SUPABASE_URL) || 'https://oqfpqlbcvtwdhmxpoyte.supabase.co';
+        let SUPABASE_KEY = (window._CONFIG && window._CONFIG.SUPABASE_KEY) || '';
+        let DEEPSEEK_API_KEY = (window._CONFIG && window._CONFIG.DEEPSEEK_API_KEY) || '';
+        let MODEL_URL = (window._CONFIG && window._CONFIG.MODEL_URL) || 'https://api.deepseek.com/v1/chat/completions';
+
+        // 从本地存储加载设置（覆盖 config.js 的值）
+        function loadSettings() {
+            if (typeof plus !== 'undefined') {
+                if (plus.storage.getItem('supabase_url')) SUPABASE_URL = plus.storage.getItem('supabase_url');
+                if (plus.storage.getItem('supabase_key')) SUPABASE_KEY = plus.storage.getItem('supabase_key');
+                if (plus.storage.getItem('deepseek_key')) DEEPSEEK_API_KEY = plus.storage.getItem('deepseek_key');
+                if (plus.storage.getItem('model_url')) MODEL_URL = plus.storage.getItem('model_url');
+            }
+            // 浏览器环境用 localStorage
+            else if (typeof localStorage !== 'undefined') {
+                if (localStorage.getItem('supabase_url')) SUPABASE_URL = localStorage.getItem('supabase_url');
+                if (localStorage.getItem('supabase_key')) SUPABASE_KEY = localStorage.getItem('supabase_key');
+                if (localStorage.getItem('deepseek_key')) DEEPSEEK_API_KEY = localStorage.getItem('deepseek_key');
+                if (localStorage.getItem('model_url')) MODEL_URL = localStorage.getItem('model_url');
+            }
         }
-        const SUPABASE_URL = window._CONFIG.SUPABASE_URL;
-        const SUPABASE_KEY = window._CONFIG.SUPABASE_KEY;
-        const DEEPSEEK_API_KEY = window._CONFIG.DEEPSEEK_API_KEY;
+
+        // 保存设置到本地存储
+        function saveSettings() {
+            const url = document.getElementById('setting-supabase-url').value;
+            const key = document.getElementById('setting-supabase-key').value;
+            const deepseek = document.getElementById('setting-deepseek-key').value;
+            const modelUrl = document.getElementById('setting-model-url').value;
+
+            if (!url || !key || !deepseek || !modelUrl) {
+                alert('请填写所有字段');
+                return;
+            }
+
+            if (typeof plus !== 'undefined') {
+                plus.storage.setItem('supabase_url', url);
+                plus.storage.setItem('supabase_key', key);
+                plus.storage.setItem('deepseek_key', deepseek);
+                plus.storage.setItem('model_url', modelUrl);
+            } else {
+                localStorage.setItem('supabase_url', url);
+                localStorage.setItem('supabase_key', key);
+                localStorage.setItem('deepseek_key', deepseek);
+                localStorage.setItem('model_url', modelUrl);
+            }
+
+            const oldUrl = SUPABASE_URL;
+            const oldKey = SUPABASE_KEY;
+
+            SUPABASE_URL = url;
+            SUPABASE_KEY = key;
+            DEEPSEEK_API_KEY = deepseek;
+            MODEL_URL = modelUrl;
+
+            // 重新创建 Supabase 客户端
+            initSupabase();
+
+            // 如果是在登录状态下修改了 Supabase 配置，需要重新登录
+            if (currentUser && (url !== oldUrl || key !== oldKey)) {
+                alert('设置已保存。由于修改了 Supabase 配置，需要重新登录。');
+                handleLogout();
+            } else {
+                alert('设置已保存');
+                hideSettings();
+            }
+        }
+
+        // 显示/隐藏设置页面
+        let previousView = 'view-auth'; // 记录之前在哪个页面
+
+        function showSettings() {
+            // 记录当前页面
+            if (document.getElementById('view-auth').classList.contains('active')) {
+                previousView = 'view-auth';
+            } else if (document.getElementById('view-app').classList.contains('active')) {
+                previousView = 'view-app';
+            }
+
+            loadSettings();
+            document.getElementById('setting-supabase-url').value = SUPABASE_URL;
+            document.getElementById('setting-supabase-key').value = SUPABASE_KEY;
+            document.getElementById('setting-deepseek-key').value = DEEPSEEK_API_KEY;
+            document.getElementById('setting-model-url').value = MODEL_URL;
+            switchView('view-settings');
+        }
+
+        function hideSettings() {
+            switchView(previousView);
+        }
+
+        // 初始化时加载设置
+        loadSettings();
 
         const { createClient } = supabase;
-        const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        let _supabase = null;
         let currentUser = null;
-        let allTransactions = []; 
+        let allTransactions = [];
         let catChart = null;
         let trendChart = null;
+
+        // 创建 Supabase 客户端（只有密钥存在时）
+        function initSupabase() {
+            if (SUPABASE_URL && SUPABASE_KEY) {
+                _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+                return true;
+            }
+            return false;
+        }
+
+        // 初始化时创建客户端（如果 config.js 里有密钥）
+        initSupabase();
 
         // --- 初始化 ---
         window.onload = async () => {
@@ -171,6 +296,24 @@
             document.getElementById('filter-month').value = new Date().toISOString().slice(0, 7);
             // 默认年份
             document.getElementById('filter-year').value = new Date().getFullYear();
+
+            // 检查是否已配置密钥
+            if (!SUPABASE_KEY || !DEEPSEEK_API_KEY) {
+                switchView('view-auth');
+                document.getElementById('global-loading').style.display = 'none';
+                // 提示用户去设置
+                setTimeout(() => {
+                    if (!SUPABASE_KEY || !DEEPSEEK_API_KEY) {
+                        alert('请先点击 ⚙️ 设置按钮，配置 Supabase 和 DeepSeek 密钥');
+                    }
+                }, 500);
+                return;
+            }
+
+            // 确保 Supabase 客户端已创建
+            if (!_supabase) {
+                initSupabase();
+            }
 
             try {
                 const { data: { session } } = await _supabase.auth.getSession();
@@ -368,7 +511,7 @@
             status.innerText = "🤖 分析中...";
             try {
                 const today = new Date().toISOString().split('T')[0];
-                const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+                const response = await fetch(MODEL_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
